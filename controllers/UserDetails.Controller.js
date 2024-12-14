@@ -5,7 +5,7 @@ const userDetailsController = async (req,res) => {
     try{
         const user = await userModel.findById(req.user.id)
 
-        res.status(400).json({
+        res.status(200).json({
             data: user,
             error:false,
             success:true

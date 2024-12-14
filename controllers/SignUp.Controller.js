@@ -1,6 +1,6 @@
 
 import bcrypt from 'bcryptjs'
-import userModel from '../Models/User.Model.js';
+import userModel from '../models/User.Model.js';
 
 const SignUpController = async (req, res) => {
     try {
