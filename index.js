@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+// import helmet from "helmet";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import DBConnection from "./config/Database.Config.js";
@@ -16,6 +17,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+// app.use(helmet());
 app.use(
   cors({
     origin: process.env.FRONTEND_URL
