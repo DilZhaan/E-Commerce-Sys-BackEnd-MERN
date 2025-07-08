@@ -1,21 +1,26 @@
-# Use official Node.js LTS image
-FROM node:22-alpine
+# Use Node.js LTS image
+FROM node:18-alpine
 
 # Set working directory
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY package.json package-lock.json ./
-
-# Install dependencies
+# Install dependencies first (better layer caching)
+COPY --chown=node:node package*.json ./
 RUN npm ci --only=production
 
-# Copy the rest of the application code
-COPY . .
+# Copy rest of the code with explicit permissions
+COPY --chown=node:node . .
 
-# Expose the port (default 4000, can be overridden by env)
-EXPOSE 4000
+# Create uploads directory with proper permissions
+RUN mkdir -p ./public/uploads \
+    && chown -R node:node /app \
+    && chmod -R 755 /app
 
-# Use environment variables from Docker Compose or .env
-# Start the application
-CMD ["npm", "start"] 
+# Switch to non-root user
+USER node
+
+# Expose backend port
+EXPOSE 5000
+
+# Start backend
+CMD ["node", "index.js"]
