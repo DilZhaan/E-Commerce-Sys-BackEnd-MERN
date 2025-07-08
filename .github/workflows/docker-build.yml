@@ -2,11 +2,11 @@ name: Build and Push Backend Docker Image
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   workflow_dispatch:
 
 env:
-  DOCKER_IMAGE: your-dockerhub-username/ecommerce-backend
+  DOCKER_IMAGE: dilzhan/ecommerce-backend
   
 jobs:
   build-and-push:
