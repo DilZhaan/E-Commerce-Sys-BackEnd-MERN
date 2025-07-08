@@ -18,14 +18,34 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 // app.use(helmet());
+
+// CORS configuration
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || "http://localhost:3000").split(",");
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL
-      ? process.env.FRONTEND_URL.split(",")
-      : "http://localhost:3000",
+    origin: function(origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Check if the origin is in our allowed list
+      if (allowedOrigins.some(allowedOrigin => origin.startsWith(allowedOrigin))) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
   })
 );
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy' });
+});
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -42,6 +62,15 @@ app.use("/api", router);
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error("Global error handler:", err);
+
+  // Handle CORS errors
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({
+      message: 'Origin not allowed',
+      error: true,
+      success: false
+    });
+  }
 
   // Handle Multer errors
   if (err instanceof multer.MulterError) {
@@ -73,9 +102,8 @@ const PORT = process.env.PORT || 4000;
 
 DBConnection().then(() => {
   app.listen(PORT, () => {
-    console.log(process.env.FRONTEND_URL);
-
-    console.log(`Server is Running in ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
+    console.log('Allowed origins:', allowedOrigins);
   });
 });
 
