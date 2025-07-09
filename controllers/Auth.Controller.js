@@ -142,10 +142,7 @@ const signin = async (req, res) => {
         const tokenOpt = {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'none',
-            domain: process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN : undefined,
-            path: '/',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+            sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
         };
 
         // Log cookie settings for debugging

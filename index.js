@@ -22,7 +22,7 @@ const app = express();
 // CORS configuration - Allow all origins
 app.use(
   cors({
-    origin: true, // Allow all origins
+    origin: 'http://40.76.251.17:3000/', // Allow all origins
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
