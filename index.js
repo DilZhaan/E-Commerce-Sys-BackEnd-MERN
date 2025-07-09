@@ -1,6 +1,5 @@
 import express from "express";
-import cors from "cors";
-// import helmet from "helmet";
+import helmet from "helmet";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import DBConnection from "./config/Database.Config.js";
@@ -17,29 +16,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-// app.use(helmet());
 
-// CORS configuration
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || "http://localhost:3000").split(",");
-
-app.use(
-  cors({
-    origin: function(origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-      
-      // Check if the origin is in our allowed list
-      if (allowedOrigins.some(allowedOrigin => origin.startsWith(allowedOrigin))) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-  })
-);
+// Security headers with Helmet
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false,
+}));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -62,15 +44,6 @@ app.use("/api", router);
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error("Global error handler:", err);
-
-  // Handle CORS errors
-  if (err.message === 'Not allowed by CORS') {
-    return res.status(403).json({
-      message: 'Origin not allowed',
-      error: true,
-      success: false
-    });
-  }
 
   // Handle Multer errors
   if (err instanceof multer.MulterError) {
@@ -103,7 +76,6 @@ const PORT = process.env.PORT || 4000;
 DBConnection().then(() => {
   app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
-    console.log('Allowed origins:', allowedOrigins);
   });
 });
 
