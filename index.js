@@ -22,7 +22,7 @@ const app = express();
 // CORS configuration
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? 'http://40.76.251.17:300'  // Production frontend URL
+    ? 'http://40.76.251.17:3000'  // Production frontend URL
     : 'http://localhost:3000',     // Development frontend URL
   credentials: true,               // Required for cookies
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
