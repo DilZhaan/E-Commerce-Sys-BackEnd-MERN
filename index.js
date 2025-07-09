@@ -1,5 +1,6 @@
 import express from "express";
-import helmet from "helmet";
+import cors from "cors";
+// import helmet from "helmet";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import DBConnection from "./config/Database.Config.js";
@@ -16,12 +17,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+// app.use(helmet());
 
-// Security headers with Helmet
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  crossOriginEmbedderPolicy: false,
-}));
+// CORS configuration - Allow all origins
+app.use(
+  cors({
+    origin: true, // Allow all origins
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  })
+);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
