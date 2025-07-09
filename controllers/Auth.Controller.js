@@ -141,8 +141,9 @@ const signin = async (req, res) => {
         // Cookie options
         const tokenOpt = {
             httpOnly: true,
-            secure: true, // Always true since we're using cross-origin
+            secure: process.env.NODE_ENV === 'production',
             sameSite: 'none',
+            domain: process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN : undefined,
             path: '/',
             maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         };
@@ -150,9 +151,7 @@ const signin = async (req, res) => {
         // Log cookie settings for debugging
         console.log('Setting cookie with options:', {
             ...tokenOpt,
-            token: token.substring(0, 10) + '...',
-            origin: req.headers.origin,
-            host: req.headers.host
+            token: token.substring(0, 10) + '...'
         });
 
         // Send response with token

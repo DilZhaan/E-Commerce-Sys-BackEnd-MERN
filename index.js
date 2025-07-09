@@ -19,21 +19,15 @@ const __dirname = path.dirname(__filename);
 const app = express();
 // app.use(helmet());
 
-// CORS configuration
-const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? 'http://40.76.251.17:3000'  // Production frontend URL
-    : 'http://localhost:3000',     // Development frontend URL
-  credentials: true,               // Required for cookies
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['set-cookie']
-};
-
-// Log CORS configuration
-console.log('CORS configuration:', corsOptions);
-
-app.use(cors(corsOptions));
+// CORS configuration - Allow all origins
+app.use(
+  cors({
+    origin: true, // Allow all origins
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  })
+);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
