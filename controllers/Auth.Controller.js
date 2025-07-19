@@ -31,12 +31,16 @@ const signup = async (req, res) => {
         }
 
         // Handle profile picture upload
-        let proPicPath = null;
+        let profilePicture = null;
         if (req.file) {
             try {
                 console.log('Uploading file:', req.file.originalname);
-                proPicPath = await uploadFile(req.file);
-                console.log('File uploaded successfully to:', proPicPath);
+                const uploadResult = await uploadFile(req.file);
+                profilePicture = {
+                    url: uploadResult.url,
+                    public_id: uploadResult.public_id
+                };
+                console.log('File uploaded successfully to Cloudinary:', profilePicture);
             } catch (uploadError) {
                 console.error('Error uploading profile picture:', uploadError);
                 return res.status(400).json({
@@ -63,7 +67,7 @@ const signup = async (req, res) => {
             dob,
             gender,
             email,
-            proPic: proPicPath,
+            proPic: profilePicture, // Use the profilePicture object
             role: "GENERAL",
             pwd: hashPwd
         };

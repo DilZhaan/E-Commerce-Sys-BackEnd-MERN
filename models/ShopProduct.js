@@ -29,8 +29,15 @@ const shopProductSchema = new Schema({
     required: true,
     default: 0 
   }, // in months
-  images: [{ 
-    type: String 
+  images: [{
+      url: {
+          type: String,
+          required: true
+      },
+      public_id: {
+          type: String,
+          required: true
+      }
   }],
   active: {
     type: Boolean,

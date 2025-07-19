@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import mongoose from "mongoose";
+import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary.js';
 
 // Get the current file's directory
 const __filename = fileURLToPath(import.meta.url);
@@ -182,384 +183,72 @@ export const getInventoryForDropdown = async (req, res) => {
   }
 };
 
+// Process uploaded images and return array of Cloudinary URLs and public IDs
+const processImages = async (files) => {
+    const imageResults = [];
+    
+    if (!files || files.length === 0) {
+        return imageResults;
+    }
+    
+    for (const file of files) {
+        try {
+            const result = await uploadToCloudinary(file.buffer || file.data, 'shop_products');
+            imageResults.push({
+                url: result.url,
+                public_id: result.public_id
+            });
+        } catch (error) {
+            console.error('Error uploading image to Cloudinary:', error);
+            throw error;
+        }
+    }
+    
+    return imageResults;
+};
+
 // Add a new shop product
 export const addShopProduct = async (req, res) => {
-  try {
-    console.log("Add shop product request body:", req.body);
-    
-    // Check if required fields are present
-    if (!req.body.name || !req.body.salePrice || !req.body.description || !req.body.inventoryItem) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields. Make sure name, salePrice, description, and inventoryItem are provided."
-      });
-    }
-    
-    // Verify that inventoryItem is a valid ObjectId
-    if (!mongoose.Types.ObjectId.isValid(req.body.inventoryItem)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid inventory item ID format"
-      });
-    }
-    
-    // Verify that the referenced inventory item exists
-    const inventoryItem = await Inventory.findById(req.body.inventoryItem);
-    if (!inventoryItem) {
-      return res.status(404).json({
-        success: false,
-        message: "Referenced inventory item not found. Please make sure you've added inventory items first."
-      });
-    }
-    
-    // Process uploaded images if any
-    let imagesPaths = [];
-    
-    if (req.files && req.files.images) {
-      // Convert to array if single file
-      const images = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
-      
-      // Create uploads directory if it doesn't exist
-      const uploadsDir = path.join(__dirname, '..', 'uploads', 'products');
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      
-      // Process each image
-      for (const image of images) {
-        const filename = `product_${Date.now()}_${image.name.replace(/\s+/g, '_')}`;
-        const uploadPath = path.join(uploadsDir, filename);
+    try {
+        console.log("Adding new shop product");
+        console.log("Request body:", req.body);
         
-        await image.mv(uploadPath);
-        imagesPaths.push(`uploads/products/${filename}`);
-      }
-    } else if (req.file && req.file.fieldname === 'images') {
-      // Handle files from FormDataParser
-      const filename = `product_${Date.now()}_${req.file.originalname.replace(/\s+/g, '_')}`;
-      const uploadsDir = path.join(__dirname, '..', 'uploads', 'products');
-      
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      
-      const uploadPath = path.join(uploadsDir, filename);
-      fs.writeFileSync(uploadPath, req.file.buffer);
-      imagesPaths.push(`uploads/products/${filename}`);
-    } else if (req.files && req.files.length > 0) {
-      // Handle multiple files array from FormDataParser
-      const uploadsDir = path.join(__dirname, '..', 'uploads', 'products');
-      
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      
-      for (const file of req.files) {
-        if (file.fieldname === 'images') {
-          const filename = `product_${Date.now()}_${file.originalname.replace(/\s+/g, '_')}`;
-          const uploadPath = path.join(uploadsDir, filename);
-          fs.writeFileSync(uploadPath, file.buffer);
-          imagesPaths.push(`uploads/products/${filename}`);
-        }
-      }
-    }
-    
-    // Ensure numeric fields are numbers
-    if (req.body.salePrice) {
-      req.body.salePrice = Number(req.body.salePrice);
-    }
-    
-    if (req.body.discount) {
-      req.body.discount = Number(req.body.discount);
-    }
-    
-    if (req.body.shopWarranty) {
-      req.body.shopWarranty = Number(req.body.shopWarranty);
-    }
-    
-    // Create the new product with images
-    const newProduct = new ShopProduct({
-      ...req.body,
-      images: imagesPaths
-    });
-    
-    const savedProduct = await newProduct.save();
-    
-    // Return the new product with populated inventory data
-    const populatedProduct = await ShopProduct.findById(savedProduct._id)
-      .populate('inventoryItem', 'modelName brandName warranty quantity reorderLevel');
-    
-    return res.status(201).json({
-      success: true,
-      message: "Shop product added successfully",
-      product: populatedProduct
-    });
-  } catch (error) {
-    console.error("Error adding shop product:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Error adding shop product",
-      error: error.message
-    });
-  }
-};
-
-// Check if this looks like a Multer request (direct array of files)
-const checkForMulterFiles = (reqFiles) => {
-  // If reqFiles is an array and looks like Multer objects
-  if (Array.isArray(reqFiles)) {
-    console.log("Found array of files, checking for Multer format...");
-    if (reqFiles.length > 0 && 
-        reqFiles[0].fieldname && 
-        reqFiles[0].originalname && 
-        reqFiles[0].buffer) {
-      console.log("This appears to be a Multer file format");
-      return reqFiles.map(file => ({
-        name: file.originalname,
-        data: file.buffer,
-        size: file.size || file.buffer.length,
-        fieldname: file.fieldname,
-        mv: (path) => {
-          return new Promise((resolve, reject) => {
-            try {
-              fs.writeFileSync(path, file.buffer);
-              resolve();
-            } catch (error) {
-              reject(error);
-            }
-          });
-        }
-      }));
-    }
-  }
-  
-  // Check for Multer single file format
-  if (reqFiles && reqFiles.fieldname && reqFiles.originalname && reqFiles.buffer) {
-    console.log("Found a single Multer file");
-    return [{
-      name: reqFiles.originalname,
-      data: reqFiles.buffer,
-      size: reqFiles.size || reqFiles.buffer.length,
-      fieldname: reqFiles.fieldname,
-      mv: (path) => {
-        return new Promise((resolve, reject) => {
-          try {
-            fs.writeFileSync(path, reqFiles.buffer);
-            resolve();
-          } catch (error) {
-            reject(error);
-          }
-        });
-      }
-    }];
-  }
-  
-  return null;
-};
-
-// Process uploaded images from a custom parser
-const extractFilesFromCustomParser = (reqFiles) => {
-  console.log("Extracting files from custom parser, reqFiles keys:", Object.keys(reqFiles));
-  const extractedFiles = [];
-  
-  // First, check if this is a direct Multer file format
-  const multerFiles = checkForMulterFiles(reqFiles);
-  if (multerFiles) {
-    console.log(`Found ${multerFiles.length} Multer-style files`);
-    return multerFiles;
-  }
-  
-  // Check each key in the files object
-  for (const key in reqFiles) {
-    const value = reqFiles[key];
-    
-    // Log the file object structure to help debug
-    console.log(`File at key '${key}':`, {
-      hasName: value && !!value.name,
-      hasOriginalname: value && !!value.originalname,
-      hasData: value && !!value.data,
-      hasBuffer: value && !!value.buffer,
-      hasSize: value && !!value.size,
-      type: value && typeof value,
-      isArray: Array.isArray(value),
-      keys: value && typeof value === 'object' ? Object.keys(value) : 'N/A'
-    });
-    
-    // Special check: if the value is an array with fieldname, originalname, buffer properties
-    if (Array.isArray(value) && value.length > 0 && 
-        value[0].fieldname && value[0].originalname && value[0].buffer) {
-      console.log(`Found array of Multer-style files at key '${key}'`);
-      for (const file of value) {
-        extractedFiles.push({
-          name: file.originalname,
-          data: file.buffer,
-          size: file.size || file.buffer.length,
-          mv: (path) => {
-            return new Promise((resolve, reject) => {
-              try {
-                fs.writeFileSync(path, file.buffer);
-                resolve();
-              } catch (error) {
-                reject(error);
-              }
-            });
-          }
-        });
-      }
-      continue;
-    }
-    
-    // Based on the custom parser logs, these files might be structured differently
-    if (value && typeof value === 'object') {
-      if (value.name && value.data) {
-        // Direct file object with name and data - the standard structure
-        console.log(`Found file object at key '${key}': ${value.name}`);
-        extractedFiles.push(value);
-      } else if (value.filename && value.data) {
-        // Some parsers use filename instead of name
-        console.log(`Found file object with 'filename' at key '${key}': ${value.filename}`);
-        // Create a standard file object
-        extractedFiles.push({
-          name: value.filename,
-          data: value.data,
-          size: value.data.length,
-          mv: (path) => {
-            return new Promise((resolve, reject) => {
-              try {
-                fs.writeFileSync(path, value.data);
-                resolve();
-              } catch (error) {
-                reject(error);
-              }
-            });
-          }
-        });
-      } else if (value.originalname && value.buffer) {
-        // This parser uses originalname and buffer (Express Multer style)
-        console.log(`Found multer-style file at key '${key}': ${value.originalname}`);
-        // Create a compatible file object
-        extractedFiles.push({
-          name: value.originalname,
-          data: value.buffer,
-          size: value.size || value.buffer.length,
-          mv: (path) => {
-            return new Promise((resolve, reject) => {
-              try {
-                fs.writeFileSync(path, value.buffer);
-                resolve();
-              } catch (error) {
-                reject(error);
-              }
-            });
-          }
-        });
-      } else if (key === 'images' || key.includes('image')) {
-        // Special handling for files with no readable name but at image-related keys
-        console.log(`Found potential file at image-related key '${key}'`);
+        let files = [];
         
-        // Try to create a file object from the properties available
-        const fileData = value.buffer || value.data;
-        if (fileData) {
-          extractedFiles.push({
-            name: value.originalname || value.filename || value.name || `file_${Date.now()}.png`,
-            data: fileData,
-            size: value.size || fileData.length,
-            mv: (path) => {
-              return new Promise((resolve, reject) => {
-                try {
-                  fs.writeFileSync(path, fileData);
-                  resolve();
-                } catch (error) {
-                  reject(error);
-                }
-              });
-            }
-          });
+        // Handle files from different middlewares
+        if (req.files?.images) {
+            files = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+        } else if (req.files && Array.isArray(req.files)) {
+            files = req.files;
+        } else if (req.file) {
+            files = [req.file];
         }
-      } else {
-        // Check if there are nested file objects
-        for (const subKey in value) {
-          const subValue = value[subKey];
-          if (subValue && typeof subValue === 'object') {
-            if ((subValue.name || subValue.filename) && subValue.data) {
-              console.log(`Found nested file at [${key}][${subKey}]: ${subValue.name || subValue.filename}`);
-              extractedFiles.push(subValue);
-            } else if (subValue.originalname && subValue.buffer) {
-              console.log(`Found nested multer-style file at [${key}][${subKey}]: ${subValue.originalname}`);
-              extractedFiles.push({
-                name: subValue.originalname,
-                data: subValue.buffer,
-                size: subValue.size || subValue.buffer.length,
-                mv: (path) => {
-                  return new Promise((resolve, reject) => {
-                    try {
-                      fs.writeFileSync(path, subValue.buffer);
-                      resolve();
-                    } catch (error) {
-                      reject(error);
-                    }
-                  });
-                }
-              });
-            }
-          }
-        }
-      }
+        
+        // Upload images to Cloudinary
+        const imageResults = await processImages(files);
+        
+        // Create new product with Cloudinary URLs
+        const newProduct = new ShopProduct({
+            ...req.body,
+            images: imageResults
+        });
+        
+        const savedProduct = await newProduct.save();
+        console.log("Product saved successfully:", savedProduct);
+        
+        res.status(201).json({
+            message: "Product added successfully",
+            product: savedProduct,
+            success: true
+        });
+    } catch (error) {
+        console.error("Error adding shop product:", error);
+        res.status(500).json({
+            message: error.message || "Error adding shop product",
+            error: true,
+            success: false
+        });
     }
-  }
-  
-  console.log(`Extracted ${extractedFiles.length} files from request`);
-  return extractedFiles;
-};
-
-// Extract file objects from all possible locations in the request
-const getAllRequestFiles = (req) => {
-  const files = [];
-  
-  // Check all possible locations where files might be stored
-  const possibleFileLocations = [
-    req.files,         // Express-fileupload
-    req.file,          // Multer (single file)
-    req.rawFiles,      // Custom middleware
-    req.files?.file,   // Nested in files.file
-    req.files?.images, // Nested in files.images
-  ];
-  
-  // Direct examination of the req object for debugging
-  console.log("Request object keys:", Object.keys(req));
-  if (req.body) console.log("Body keys:", Object.keys(req.body));
-  if (req.files) console.log("Files keys:", Object.keys(req.files));
-  
-  // Check each possible location for files
-  for (const location of possibleFileLocations) {
-    if (!location) continue;
-    
-    if (Array.isArray(location)) {
-      console.log(`Found array of files with ${location.length} items`);
-      files.push(...location);
-    } else if (typeof location === 'object' && !Array.isArray(location)) {
-      console.log(`Found file object: ${location.name || location.originalname || 'unknown'}`);
-      files.push(location);
-    }
-  }
-  
-  // Check for files directly in req
-  if (req[0] && (req[0].fieldname || req[0].originalname)) {
-    console.log("Found files directly in req array");
-    files.push(...req);
-  }
-  
-  // Special handling for numeric keys in files object
-  if (req.files) {
-    for (const key in req.files) {
-      if (!isNaN(key) && req.files[key]) {
-        console.log(`Found file at numeric key ${key}`);
-        files.push(req.files[key]);
-      }
-    }
-  }
-  
-  console.log(`Found ${files.length} files across all req locations`);
-  return files;
 };
 
 // Update an existing shop product
@@ -844,41 +533,98 @@ export const updateShopProduct = async (req, res) => {
   }
 };
 
-// Delete a shop product
-export const deleteShopProduct = async (req, res) => {
-  try {
-    // Find the product to delete
-    const product = await ShopProduct.findById(req.params.id);
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: "Shop product not found"
-      });
-    }
+// Extract file objects from all possible locations in the request
+const getAllRequestFiles = (req) => {
+  const files = [];
+  
+  // Check all possible locations where files might be stored
+  const possibleFileLocations = [
+    req.files,         // Express-fileupload
+    req.file,          // Multer (single file)
+    req.rawFiles,      // Custom middleware
+    req.files?.file,   // Nested in files.file
+    req.files?.images, // Nested in files.images
+  ];
+  
+  // Direct examination of the req object for debugging
+  console.log("Request object keys:", Object.keys(req));
+  if (req.body) console.log("Body keys:", Object.keys(req.body));
+  if (req.files) console.log("Files keys:", Object.keys(req.files));
+  
+  // Check each possible location for files
+  for (const location of possibleFileLocations) {
+    if (!location) continue;
     
-    // Delete associated images
-    for (const imagePath of product.images) {
-      const fullPath = path.join(__dirname, '..', imagePath);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
+    if (Array.isArray(location)) {
+      console.log(`Found array of files with ${location.length} items`);
+      files.push(...location);
+    } else if (typeof location === 'object' && !Array.isArray(location)) {
+      console.log(`Found file object: ${location.name || location.originalname || 'unknown'}`);
+      files.push(location);
+    }
+  }
+  
+  // Check for files directly in req
+  if (req[0] && (req[0].fieldname || req[0].originalname)) {
+    console.log("Found files directly in req array");
+    files.push(...req);
+  }
+  
+  // Special handling for numeric keys in files object
+  if (req.files) {
+    for (const key in req.files) {
+      if (!isNaN(key) && req.files[key]) {
+        console.log(`Found file at numeric key ${key}`);
+        files.push(req.files[key]);
       }
     }
-    
-    // Delete the product
-    await ShopProduct.findByIdAndDelete(req.params.id);
-    
-    return res.status(200).json({
-      success: true,
-      message: "Shop product deleted successfully"
-    });
-  } catch (error) {
-    console.error("Error deleting shop product:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Error deleting shop product",
-      error: error.message
-    });
   }
+  
+  console.log(`Found ${files.length} files across all req locations`);
+  return files;
+};
+
+// Delete a shop product
+export const deleteShopProduct = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Get product to delete
+        const product = await ShopProduct.findById(id);
+        if (!product) {
+            return res.status(404).json({
+                message: "Product not found",
+                error: true,
+                success: false
+            });
+        }
+        
+        // Delete images from Cloudinary
+        for (const image of product.images) {
+            if (image.public_id) {
+                try {
+                    await deleteFromCloudinary(image.public_id);
+                } catch (error) {
+                    console.error('Error deleting image from Cloudinary:', error);
+                }
+            }
+        }
+        
+        // Delete product from database
+        await ShopProduct.findByIdAndDelete(id);
+        
+        res.json({
+            message: "Product deleted successfully",
+            success: true
+        });
+    } catch (error) {
+        console.error("Error deleting shop product:", error);
+        res.status(500).json({
+            message: error.message || "Error deleting shop product",
+            error: true,
+            success: false
+        });
+    }
 };
 
 // Toggle product active status

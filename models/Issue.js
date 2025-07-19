@@ -20,6 +20,17 @@ const messageSchema = new mongoose.Schema({
     }
 });
 
+const imageSchema = new mongoose.Schema({
+    url: {
+        type: String,
+        required: true
+    },
+    public_id: {
+        type: String,
+        required: true
+    }
+});
+
 const issueSchema = new mongoose.Schema({
     name: {
         type: String,
@@ -49,7 +60,7 @@ const issueSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    images: [String],
+    images: [imageSchema],
     status: {
         type: String,
         enum: ['PENDING', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'],

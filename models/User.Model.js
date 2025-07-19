@@ -1,7 +1,16 @@
 import mongoose from 'mongoose'
 
 const userSchema = new mongoose.Schema({
-    proPic:String,
+    proPic: {
+        url: {
+            type: String,
+            default: null
+        },
+        public_id: {
+            type: String,
+            default: null
+        }
+    },
     fName: String,
     lName: String,
     address: String,

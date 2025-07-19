@@ -4,27 +4,13 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { sendSMS } from '../utils/smsService.js';
+import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Configure storage for issue images
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = path.join(__dirname, '../uploads/issues');
-        
-        // Create directory if it doesn't exist
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'issue-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
+// Configure multer for memory storage
+const storage = multer.memoryStorage();
 
 // Create multer upload instance
 export const upload = multer({ 
@@ -41,18 +27,26 @@ export const upload = multer({
             cb(new Error("Only image files are allowed!"));
         }
     }
-}).array('images', 5); // Allow up to 5 images
+}).array('images', 5);
 
 // Create a new issue
 export const createIssue = async (req, res) => {
     try {
-        // Process uploaded files
-        const fileUrls = req.files?.map(file => `/uploads/issues/${file.filename}`) || [];
+        // Upload files to Cloudinary
+        const uploadPromises = (req.files || []).map(file => 
+            uploadToCloudinary(file.buffer, 'issues')
+        );
         
-        // Create new issue with file URLs
+        const uploadResults = await Promise.all(uploadPromises);
+        const images = uploadResults.map(result => ({
+            url: result.url,
+            public_id: result.public_id
+        }));
+        
+        // Create new issue with Cloudinary URLs
         const issueData = {
             ...req.body,
-            images: fileUrls,
+            images
         };
         
         // If user is logged in, associate the issue with their account
@@ -72,6 +66,51 @@ export const createIssue = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to report issue',
+            error: error.message
+        });
+    }
+};
+
+// Add images to an existing issue
+export const addImagesToIssue = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Upload new files to Cloudinary
+        const uploadPromises = (req.files || []).map(file => 
+            uploadToCloudinary(file.buffer, 'issues')
+        );
+        
+        const uploadResults = await Promise.all(uploadPromises);
+        const newImages = uploadResults.map(result => ({
+            url: result.url,
+            public_id: result.public_id
+        }));
+        
+        // Find the issue and add the images
+        const issue = await Issue.findById(id);
+        
+        if (!issue) {
+            return res.status(404).json({
+                success: false,
+                message: 'Issue not found'
+            });
+        }
+        
+        // Add new images to existing ones
+        issue.images = [...(issue.images || []), ...newImages];
+        await issue.save();
+        
+        res.status(200).json({
+            success: true,
+            message: 'Images uploaded successfully',
+            images: newImages
+        });
+    } catch (error) {
+        console.error('Error uploading images:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to upload images',
             error: error.message
         });
     }
@@ -377,7 +416,6 @@ export const deleteIssue = async (req, res) => {
         }
         
         // Check if the requesting user is authorized to delete this issue
-        // (either admin or the user who created it)
         if (req.user.role !== 'ADMIN' && 
             (!issue.user || issue.user.toString() !== req.user.id.toString())) {
             return res.status(403).json({
@@ -386,18 +424,13 @@ export const deleteIssue = async (req, res) => {
             });
         }
         
-        // Delete any images associated with the issue
+        // Delete images from Cloudinary
         if (issue.images && issue.images.length > 0) {
-            issue.images.forEach(imageUrl => {
-                try {
-                    const imagePath = path.join(__dirname, '..', imageUrl);
-                    if (fs.existsSync(imagePath)) {
-                        fs.unlinkSync(imagePath);
-                    }
-                } catch (err) {
-                    console.error(`Failed to delete image: ${imageUrl}`, err);
-                }
-            });
+            const deletePromises = issue.images
+                .filter(image => image.public_id)
+                .map(image => deleteFromCloudinary(image.public_id));
+            
+            await Promise.all(deletePromises);
         }
         
         // Delete the issue
@@ -433,7 +466,6 @@ export const editIssue = async (req, res) => {
         }
         
         // Check if the requesting user is authorized to edit this issue
-        // (either admin or the user who created it)
         if (req.user.role !== 'ADMIN' && 
             (!issue.user || issue.user.toString() !== req.user.id.toString())) {
             return res.status(403).json({
@@ -451,31 +483,32 @@ export const editIssue = async (req, res) => {
         if (whatsappNo) issue.whatsappNo = whatsappNo;
         if (description) issue.description = description;
         
-        // Process uploaded files if any
-        const fileUrls = req.files?.map(file => `/uploads/issues/${file.filename}`) || [];
-        if (fileUrls.length > 0) {
-            issue.images = [...issue.images, ...fileUrls];
+        // Upload new files to Cloudinary if any
+        if (req.files && req.files.length > 0) {
+            const uploadPromises = req.files.map(file => 
+                uploadToCloudinary(file.buffer, 'issues')
+            );
+            
+            const uploadResults = await Promise.all(uploadPromises);
+            const newImages = uploadResults.map(result => ({
+                url: result.url,
+                public_id: result.public_id
+            }));
+            
+            issue.images = [...(issue.images || []), ...newImages];
         }
         
         // Remove specified images if needed
         if (imagesToDelete && Array.isArray(imagesToDelete) && imagesToDelete.length > 0) {
-            // Filter out images that should be deleted
-            const remainingImages = issue.images.filter(img => !imagesToDelete.includes(img));
+            // Delete images from Cloudinary
+            const deletePromises = imagesToDelete
+                .filter(imageId => imageId)
+                .map(imageId => deleteFromCloudinary(imageId));
             
-            // Delete image files from the filesystem
-            imagesToDelete.forEach(imageUrl => {
-                try {
-                    const imagePath = path.join(__dirname, '..', imageUrl);
-                    if (fs.existsSync(imagePath)) {
-                        fs.unlinkSync(imagePath);
-                    }
-                } catch (err) {
-                    console.error(`Failed to delete image: ${imageUrl}`, err);
-                }
-            });
+            await Promise.all(deletePromises);
             
-            // Update issue with remaining images
-            issue.images = remainingImages;
+            // Filter out deleted images
+            issue.images = issue.images.filter(img => !imagesToDelete.includes(img.public_id));
         }
         
         // Save updated issue
