@@ -19,10 +19,22 @@ const __dirname = path.dirname(__filename);
 const app = express();
 // app.use(helmet());
 
-// CORS configuration - Allow all origins
+// Parse allowed origins from environment variable
+const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim()) : ['http://localhost:3000'];
+
+// CORS configuration with multiple origins
 app.use(
   cors({
-    origin: ['http://40.76.251.17:3000', 'http://store.dilzhan.online:3000', 'http://localhost:3000'], 
+    origin: function(origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.indexOf(origin) === -1) {
+        const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
